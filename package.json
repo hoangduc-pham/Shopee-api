@@ -1,0 +1,12 @@
+{
+  "name": "shopee-webhook-railway",
+  "version": "1.0.0",
+  "description": "Shopee Webhook Callback URL on Railway",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
