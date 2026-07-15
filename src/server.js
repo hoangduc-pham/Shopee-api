@@ -1,33 +1,81 @@
-const express = require('express');
+const express = require("express");
+const { buildAuthorizeUrl } = require("./shopee");
+
 const app = express();
 const PORT = process.env.PORT || 3000;
+const PARTNER_ID = process.env.PARTNER_ID || "2038751";
+const PARTNER_KEY =
+  process.env.PARTNER_KEY ||
+  "shpk76484f6c656d46675a745457444e555a73454e694f444b5472785250636e";
+const REDIRECT_URL =
+  process.env.REDIRECT_URL ||
+  "https://shopee-api-production.up.railway.app/shopee-webhook";
 
 app.use(express.json());
 
-// Endpoint nhận Callback từ Shopee
-app.post('/shopee-webhook', (req, res) => {
-    const body = req.body;
+app.get("/", (req, res) => {
+  res.status(200).json({
+    message: "Shopee API backend is running",
+    endpoints: {
+      webhook: "/shopee-webhook",
+      authorize: "/authorize",
+      callback: "/shopee-webhook",
+    },
+  });
+});
 
-    // LƯU Ý 1: Bước xác thực URL từ Shopee Open Platform
-    // Shopee sẽ gửi một field tên là "code" để kiểm tra xem webhook có hoạt động không
-    if (body && body.code) {
-        console.log('👉 Đang xác thực URL với Shopee. Code nhận được:', body.code);
+app.get("/authorize", (req, res) => {
+  try {
+    const authorizeUrl = buildAuthorizeUrl({
+      partnerId: PARTNER_ID,
+      partnerKey: PARTNER_KEY,
+      redirectUrl: REDIRECT_URL,
+      state: req.query.state || "shop-auth",
+    });
 
-        // Trả về đúng cấu trúc Shopee yêu cầu để hoàn tất xác thực
-        return res.status(200).json({
-            code: body.code
-        });
-    }
+    res.redirect(authorizeUrl);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
 
-    // LƯU Ý 2: Xử lý dữ liệu thông báo thực tế từ Shopee (khi có đơn hàng, cập nhật kho...)
-    console.log('📦 Nhận thông báo thực tế từ Shopee:', body);
+app.get("/shopee-webhook", (req, res) => {
+  const { code, state, error } = req.query;
 
-    // Xử lý logic của bạn ở đây (Ví dụ: kiểm tra body.data, body.event_type...)
+  if (error) {
+    console.error("❌ Shopee authorization failed:", error);
+    return res.status(400).send(`Authorization failed: ${error}`);
+  }
 
-    // Luôn trả về 200 OK cho Shopee sau khi nhận dữ liệu thành công
-    return res.status(200).send('OK');
+  if (code) {
+    console.log("✅ Shopee authorization code received:", code);
+    console.log("State:", state || "none");
+    return res.status(200).json({
+      message: "Authorization code received",
+      code,
+      state,
+    });
+  }
+
+  return res.status(200).send("OK");
+});
+
+app.post("/shopee-webhook", (req, res) => {
+  const body = req.body;
+
+  if (body && body.code) {
+    console.log(
+      "👉 Validating callback URL with Shopee. Code received:",
+      body.code,
+    );
+    return res.status(200).json({ code: body.code });
+  }
+
+  console.log("📦 Received real Shopee notification:", body);
+  return res.status(200).send("OK");
 });
 
 app.listen(PORT, () => {
-    console.log(`Server Shopee Webhook đang chạy trên cổng ${PORT}`);
+  console.log(`Server Shopee Webhook đang chạy trên cổng ${PORT}`);
+  console.log(`Authorize URL: http://localhost:${PORT}/authorize`);
 });
