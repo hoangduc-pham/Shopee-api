@@ -1,5 +1,9 @@
 const express = require("express");
-const { buildAuthorizeUrl } = require("./shopee");
+const {
+  buildAuthorizeUrl,
+  exchangeCodeForToken,
+  getProducts,
+} = require("./shopee");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -39,7 +43,7 @@ app.get("/authorize", (req, res) => {
   }
 });
 
-app.get("/shopee-webhook", (req, res) => {
+app.get("/shopee-webhook", async (req, res) => {
   const { code, state, error } = req.query;
 
   if (error) {
@@ -50,14 +54,55 @@ app.get("/shopee-webhook", (req, res) => {
   if (code) {
     console.log("✅ Shopee authorization code received:", code);
     console.log("State:", state || "none");
-    return res.status(200).json({
-      message: "Authorization code received",
-      code,
-      state,
-    });
+
+    try {
+      const tokenResponse = await exchangeCodeForToken({
+        code,
+        partnerId: PARTNER_ID,
+        partnerKey: PARTNER_KEY,
+        shopId: req.query.shop_id,
+      });
+
+      return res.status(200).json({
+        message: "Authorization code received",
+        code,
+        state,
+        tokenResponse,
+      });
+    } catch (err) {
+      console.error("Failed to exchange code:", err);
+      return res.status(500).json({ error: err.message });
+    }
   }
 
   return res.status(200).send("OK");
+});
+
+app.get("/products", async (req, res) => {
+  const accessToken = req.query.access_token;
+  const shopId = req.query.shop_id;
+
+  if (!accessToken || !shopId) {
+    return res.status(400).json({
+      error: "Missing access_token or shop_id",
+    });
+  }
+
+  try {
+    const products = await getProducts({
+      accessToken,
+      partnerId: PARTNER_ID,
+      partnerKey: PARTNER_KEY,
+      shopId,
+      pageSize: Number(req.query.page_size || 10),
+      offset: Number(req.query.offset || 0),
+    });
+
+    return res.status(200).json(products);
+  } catch (err) {
+    console.error("Failed to fetch products:", err);
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 app.post("/shopee-webhook", (req, res) => {
